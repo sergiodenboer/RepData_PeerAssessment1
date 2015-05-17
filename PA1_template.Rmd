@@ -1,25 +1,208 @@
 ---
 title: "Reproducible Research: Peer Assessment 1"
 output: 
-  html_document:
-    keep_md: true
+html_document:
+keep_md: true
+fig_caption: yes
 ---
 
+```{r setup, cache=FALSE, include=FALSE}
+library(knitr)
+opts_chunk$set(fig.width=11, fig.height=5, echo=TRUE)
+```
 
-## Loading and preprocessing the data
+
+<!-- markdown v1 -->
+## Loading and preprocessing 
+The first step of this analysis is to load the dataset into the workspace. For the sake of exemplification this dataset is stored in data.raw data.frame:
+```{r loading the data}
+steps.raw <- read.csv('activity.csv')
+steps.raw$date <- as.Date(steps.raw$date,'%Y-%m-%d')
+```
+To work decently with dates these where converted from strings to valid Date objects.
+This document assumes that the data file is in the same folder as this script.
+
+# Data Analyis
+
+To better understand the data structure a simple statistics calculation was performed. The mean value, median total length and valid record length was obtained.
+
+```{r raw data statistics}
+#Determines the total number of steps and the number of valid steps
+step.raw.stats <-list()
+step.raw.stats <- c(step.raw.stats, length(steps.raw$steps))
+step.raw.stats <-c(step.raw.stats,sum(as.numeric(is.na(steps.raw$steps))))
+
+#Computes mean and median values
+step.raw.stats <- c(step.raw.stats,mean(steps.raw$steps,na.rm = T))
+step.raw.stats <-c(step.raw.stats,median(steps.raw$steps,na.rm=T))
+names(step.raw.stats) <- c('#total','#valid','mean','median')
+
+kable(as.data.frame(step.raw.stats), format = "markdown")    
+```
+
+Some conclusions can be addressed. The dataset is hevelly right skewed being the median much lower than the mean value.
+Has seen from the table above there are several missing values in the dataset.
+To overcome this issue a reconstruction of the dataset was aimed. 
+
+## Dataset reconstruction
+The dataset reconstruction was performed be evaluating the mean and median values for each 5 seconds time interval. 
+All the NA values for a given 5 minutes interval were then replaced by the corresponding interval total rounded average along the dataset (excluding Na values).
+
+The first step was to perform  a statistical analysis condition on 5 seconds time intervals.
+The code that was used is displayed bellow as the first 10 rows of the resulting data.frame.
+
+```{r raw data conditional statistics}
+  #Retrieves for each day the mean and median
+ steps.raw.cond.stat <- as.data.frame(sapply(split(steps.raw,steps.raw$interval),function(x) mean(x[,'steps'],na.rm=T)),row.names=NULL)
+
+steps.raw.cond.stat <- cbind(steps.raw.cond.stat,as.data.frame(sapply(split(steps.raw,steps.raw$interval),function(x) median(x[,'steps'],na.rm=T)),row.names=NULL))
+colnames(steps.raw.cond.stat) <- c('mean','median')
+steps.raw.cond.stat$interval <- as.integer(rownames(steps.raw.cond.stat))
+#Displays the first 10 values
+kable(head(steps.raw.cond.stat), format = "markdown")  
+```
 
 
 
+In the second and final step the final dataset was created. 
+In this part of the analysis all the NA values in the original dataset were replaced by the rounded average, conditioned on the 5 seconds time interval as shown bellow:
+```{r clean dataset creation, results='hide'}
+#creates a cleaned dataset
+steps.clean <- steps.raw
+#Replaces NA values with the mean value
+
+
+#Cycles throwh the raw data statistico n time interval and assigns the new mwan value
+f= function(row){
+  steps.clean[steps.clean$interval ==as.numeric(row['interval']) & is.na(steps.clean$steps),'steps'] <<- round(row['mean'])
+}
+apply(steps.raw.cond.stat, 1, f);
+steps.clean.mean <- mean(steps.clean$steps)
+steps.clean.total <- sum(steps.clean$steps)
+steps.clean.median <- median(steps.clean$steps)
+```
+
+
+
+# The Analysis
+
+  A shallow descriptive and temporal analysis of the dataset was performed in the following  topics. 
+  
 ## What is mean total number of steps taken per day?
 
+As previously stated the mean number of steps is
+```{r total number of steps}
+steps.clean.total
+```
+
+The mean value of steps is:
+```{r Steps mean value}
+steps.clean.mean
+```
+
+The median value of steps is:
+```{r steps median value}
+steps.clean.median
+```
+
+
+To determine the number of total steps per day the following code was used.
+Performing a histogram analysis on all valid steps yields the following distribution:
+```{r Histogram of number of steps}
+par(mfrow=c(1,2))
+hist(steps.raw$steps, main='Total Steps (raw data)',xlab='Number of steps')
+hist(steps.clean$steps, main='Total Steps (cleaned)',xlab='Number of steps')
+```
+
+It is concluded that there are no prominent differences in the histograms between the to datasets.
+As stated above the mean is way bigger than the median. This is obvious by the huge skewness of the distribution. The histograms also prove an unimodal distribution.
+No significant differences on the mean or median are observed. These are backed up by the previously calculated values.
+
+## Conditional step statistics
+  For the cleaned dataset it was thought of a conditional statistics on the day of the week. Therefore the following table presents the total number of steps taken for the first 10 days, alongside with the code:
+  
+```{r per day statistics}
+  steps.clean.cond.stat <- as.data.frame(sapply(split(steps.clean,steps.clean$date),function(x) mean(x[,'steps'],na.rm=T)))
+
+steps.clean.cond.stat <- cbind(steps.clean.cond.stat,as.data.frame(sapply(split(steps.clean,steps.clean$date),function(x) median(x[,'steps'],na.rm=T))))
+colnames(steps.clean.cond.stat) <- c('mean','median')
+                               
+kable(head(steps.clean.cond.stat), format = "markdown")     
+
+```
+
+
+## Step temporal evolution
+The evolution of the number of taken steps by day is also an interesting analysis. This can be performed by looking at the number of steps taken each day:
+
+```{r Steps time series}
+
+ts.raw <- as.data.frame(sapply(split(steps.raw,steps.raw$interval),function(x) mean(x[,'steps'],na.rm=T)))
+
+ts.clean<- as.data.frame(sapply(split(steps.clean,steps.clean$interval),function(x) mean(x[,'steps'],na.rm=T)))
+
+#Generates single figure plot for comparissons
+plot(rownames(ts.raw),ts.raw[,1],type='l',main='# of Steps time series',xlab='Interval (5m)',ylab='# steps',col='blue')
+lines(rownames(ts.clean),ts.clean[,1],type='l',col='red')
+legend('topright',c('Raw data','Cleaned data'),col=c('blue','red'), lty=1)
+```
+
+The maximum steps were recorded during the following interval:
+```{r maximum steps recorded}
+steps.clean[steps.clean$steps == max(steps.clean$steps),'interval']
+```
 
 
 ## What is the average daily activity pattern?
 
+To determine the average daily activity pattern the comparison between weekdays and weekends was performed.
+The first step was to check for every date which were weekends and weekdays. Then two new factors were added to the reconstructed dataset is.weekday and is.weekend
 
 
-## Imputing missing values
+```{r Adding weekday and weekend info to the dataset}
+#Stores current colnames in an axiliary vector
+aux.colnames <- colnames(steps.clean)
 
+#Retrieves all days that are weekends
+steps.clean <- cbind(steps.clean,as.data.frame(sapply(weekdays(steps.raw$date),function(x) any(c('Domingo','Sábado')==x))))
 
+#Determines all days that are weekdays
+steps.clean <- cbind(steps.clean,!steps.clean[,4])
 
-## Are there differences in activity patterns between weekdays and weekends?
+#updates colnames
+colnames(steps.clean)<- c(aux.colnames,'is.weekend','is.weekday')
+
+#Splits the data base on is weekend or not
+aux <- split(steps.clean,steps.clean$is.weekend)
+steps.clean.weekend.true <- as.data.frame(aux['TRUE'])
+steps.clean.weekend.false <- as.data.frame(aux['FALSE'])
+
+colnames(steps.clean.weekend.true)<- c(aux.colnames,'is.weekend','is.weekday')
+colnames(steps.clean.weekend.false)<- c(aux.colnames,'is.weekend','is.weekday')
+
+```
+
+The second step was to plot the data.
+```{r Plotting 5 minut time interval for weekend and weekday}
+
+#Averge steps inteverals averaages on weekdays
+ts.clean.weekdays <- as.data.frame(sapply(split(steps.clean.weekend.true[,'steps'],steps.clean.weekend.true$interval),function(x) mean(x,na.rm=T)))
+#Averge steps inteverals averaages on weekends
+ts.clean.weekends <- as.data.frame(sapply(split(steps.clean.weekend.false[,'steps'],steps.clean.weekend.false$interval),function(x) mean(x,na.rm=T)))
+
+#alters colnames
+colnames(ts.clean.weekdays) <- c('steps')
+colnames(ts.clean.weekends) <- c('steps')
+
+#Plots in same graph for comparisson
+plot(rownames(ts.clean.weekends),ts.clean.weekends$steps,type='l',main='# of Steps time series (raw data)',xlab='Interval m',ylab='# steps',col='blue')
+lines(rownames(ts.clean.weekdays),ts.clean.weekdays$steps,col='red')
+legend('topright',c('Weekends','Weekdays'),col=c('blue','red'), lty=1)
+```
+
+It is concluded that on average shows that there is a difference between weekday and weekend activity. The maximum recorded average was on weekends yielding:
+
+```{r Maximum average steps }
+max(ts.clean.weekends$steps)
+```
+
